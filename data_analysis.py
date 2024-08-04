@@ -31,18 +31,19 @@ a = (2 * np.pi) / 32
 m = 0.125
 
 
-def plot_dispersion_relation(E_plat):
-    ps = np.linspace(0, 5, 1000)
+def plot_dispersion_relation(E_plat, momenta):
+    ps = np.linspace(0, np.ceil(max(momenta)), 1000)
     Es = np.sqrt(np.add(m**2, np.multiply((a**2), np.square(ps))))
     print(E_plat)
 
+    E_plats = [E_plat[i][0] for i in range(len(E_plat))]
+    E_plat_errs = [E_plat[i][1] for i in range(len(E_plat))]
     fig = plt.figure()
-    plt.plot(ps, Es, color="black")
-    plt.errorbar(
-        [2, 4], [E_plat[0][0], E_plat[1][0]], yerr=[E_plat[0][1], E_plat[1][1]], fmt="x"
-    )
+    plt.plot(ps, Es, color="black", label="Theoretical")
+    plt.errorbar(momenta, E_plats, yerr=E_plat_errs, fmt="x", label="Experimental")
     plt.xlabel(r"$p$")
     plt.ylabel(r"$aE_{plat}$")
+    plt.legend()
     fig.savefig(plots_dir + "dispersion_relation.png", dpi=300)
     plt.close()
 
@@ -96,8 +97,6 @@ def analyze_data(
     y_lim_high=None,
 ):
     data = np.array(data).T
-    print(momentum)
-    print(data.shape)
 
     # Average the values for the 2pt function for t_1 = t and t_2 = 63 - t
     averaged_data = np.divide(
@@ -168,7 +167,7 @@ def analyze_data(
         plots_dir
         + fname
         + "-"
-        + np.format_float_positional(momentum, precision=3)
+        + np.format_float_positional(momentum, min_digits=3, precision=3)
         + ".png",
         dpi=300,
     )
@@ -179,6 +178,7 @@ def analyze_data(
 
 
 E_plat = []
+momenta = []
 # Get a list of the sub-directories
 for j, data_dir in enumerate(data_dirs):
     data = {}
@@ -191,33 +191,43 @@ for j, data_dir in enumerate(data_dirs):
         if files == []:
             continue
 
-        prev_momentum = 0
         with open(dir + "/" + files[0], "r") as f1, open(
             dir + "/" + files[1], "r"
         ) as f2:
             tmp1 = f1.read().split("\n")
             tmp2 = f2.read().split("\n")
 
+            prev_momentum = 0
+            c2pts = [[] for _ in range(64)]
             for point in zip(tmp1, tmp2):
                 if point == ("", ""):
+                    if not (prev_momentum in data):
+                        data[prev_momentum] = []
+
+                    data[prev_momentum].append(np.mean(c2pts, axis=1))
+                    c2pts = [[] for i in range(64)]
+                    prev_momentum = momentum
                     break
+
                 d1 = point[0].split(" ")
                 d2 = point[1].split(" ")
                 momentum = np.sqrt(int(d1[0]) ** 2 + int(d1[1]) ** 2 + int(d1[2]) ** 2)
                 t = int(d1[3])
 
-                if momentum == prev_momentum:
-                    c2pts[t].append((float(d1[4]) + float(d2[4])) / 2)
-                else:
-                    if not (momentum in data):
-                        data[momentum] = []
-                    else:
-                        data[momentum].append(np.mean(c2pts, axis=1))
-                    c2pts = [[] for i in range(64)]
-                    c2pts[t].append((float(d1[4]) + float(d2[4])) / 2)
+                if prev_momentum == 0:
                     prev_momentum = momentum
 
-    print(data.keys())
+                if momentum != prev_momentum:
+                    if not (prev_momentum in data):
+                        data[prev_momentum] = []
+
+                    data[prev_momentum].append(np.mean(c2pts, axis=1))
+                    c2pts = [[] for i in range(64)]
+                    prev_momentum = momentum
+
+                c2pts[t].append((float(d1[4]) + float(d2[4])) / 2)
+
+    momenta.extend(data.keys())
     for momentum, c2pt_data in data.items():
         E_plat.append(
             analyze_data(
@@ -233,5 +243,4 @@ for j, data_dir in enumerate(data_dirs):
             )
         )
 
-
-plot_dispersion_relation(E_plat)
+plot_dispersion_relation(E_plat, momenta)
